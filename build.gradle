@@ -17,6 +17,7 @@ mainClassName = 'io.vertx.core.Launcher'
 
 dependencies {
   compile "io.vertx:vertx-core:$version"
+  compile "io.vertx:vertx-web:$version"
 }
 
 shadowJar {

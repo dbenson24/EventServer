@@ -1,0 +1,44 @@
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+
+  <title>EventServer</title>
+
+
+  <!--[if lt IE 9]>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5shiv/3.7.3/html5shiv.js"></script>
+  <![endif]-->
+  <script src="https://cdn.jsdelivr.net/sockjs/1/sockjs.min.js"></script>
+  <script src="https://rawgit.com/vert-x/vertx-examples/master/src/raw/javascript/eventbusbridge/vertxbus.js"></script>
+</head>
+
+<body>
+  <input type="text" id="textInput"/>
+  <button onclick="submit()">Send Text</button>
+  <script>
+  var sock = new SockJS('/events');
+  sock.onopen = function() {
+      console.log('open');
+  };
+  sock.onmessage = function(e) {
+      console.log('sock-message', e.data);
+  };
+  sock.onclose = function() {
+      console.log('close');
+  };
+  
+  var eb = new vertx.EventBus('/eventbus');
+  eb.onopen = function() {
+	  eb.registerHandler('chat.public', function(msg, error) {
+		  console.log('chat.public', JSON.stringify(msg));
+	  });
+  }
+  
+  window.submit = function() {
+	  var text = document.getElementById("textInput").value;
+	  sock.send(text);
+	  eb.send('chat.public', {'content': text});
+  }
+  </script>
+</body>
+</html>

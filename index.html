@@ -9,13 +9,21 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html5shiv/3.7.3/html5shiv.js"></script>
   <![endif]-->
   <script src="https://cdn.jsdelivr.net/sockjs/1/sockjs.min.js"></script>
-  <script src="https://rawgit.com/vert-x/vertx-examples/master/src/raw/javascript/eventbusbridge/vertxbus.js"></script>
+  <script src="https://rawgit.com/vert-x3/vertx-bus-bower/master/vertx-eventbus.js"></script>
 </head>
 
 <body>
-  <input type="text" id="textInput"/>
-  <button onclick="submit()">Send Text</button>
+	<div>
+		<input type="text" id="textInput"/>
+		<button onclick="submitMessage()">Send Text</button>
+	</div>
+	<div>
+		<input type="text" id="authToken"/>
+		<button onclick="openEB()">Open Event Bus</button>
+	</div>
+  
   <script>
+  /*
   var sock = new SockJS('/events');
   sock.onopen = function() {
       console.log('open');
@@ -26,18 +34,29 @@
   sock.onclose = function() {
       console.log('close');
   };
-  
-  var eb = new vertx.EventBus('/eventbus');
-  eb.onopen = function() {
-	  eb.registerHandler('chat.public', function(msg, error) {
-		  console.log('chat.public', JSON.stringify(msg));
+  */
+  var eb;
+  window.openEB = function() {
+	eb = new EventBus('/eventbus');  
+	eb.onopen = function() {
+	 var headers = {
+		  "Auth-Token" : document.getElementById("authToken").value
+	 };
+	 eb.registerHandler('chat.public.out', headers, function(error, msg) {
+	  console.log('chat.public.out', JSON.stringify(msg));
+	 });
+	 setTimeout(function(){
+	  eb.registerHandler('chat.location.out', headers, function(error, msg) {
+		  console.log('chat.location.out', JSON.stringify(msg));
 	  });
-  }
+	 }, 1500);
+	}
+  };
   
-  window.submit = function() {
+  window.submitMessage = function() {
 	  var text = document.getElementById("textInput").value;
-	  sock.send(text);
-	  eb.send('chat.public', {'content': text});
+	  eb.send('chat.public.in', {'content': text});
+	  eb.send('chat.location.in', {'content': text});
   }
   </script>
 </body>

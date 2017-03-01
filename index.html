@@ -49,14 +49,25 @@
 	  eb.registerHandler('chat.location.out', headers, function(error, msg) {
 		  console.log('chat.location.out', JSON.stringify(msg));
 	  });
+	  eb.registerHandler('chat.party.out', headers, function(error, msg) {
+		  console.log('chat.location.out', JSON.stringify(msg));
+	  });
+	  eb.registerHandler('chat.group.out', headers, function(error, msg) {
+		  console.log('chat.location.out', JSON.stringify(msg));
+	  });
+	  eb.registerHandler('chat.private.out', headers, function(error, msg) {
+		  console.log('chat.location.out', JSON.stringify(msg));
+	  });
 	 }, 1500);
 	}
   };
   
   window.submitMessage = function() {
 	  var text = document.getElementById("textInput").value;
-	  eb.send('chat.public.in', {'content': text});
-	  eb.send('chat.location.in', {'content': text});
+	  eb.send('chat.public.in', {'contents': text});
+	  eb.send('chat.location.in', {'contents': text});
+	  eb.send('chat.group.in', {'contents': text});
+	  eb.send('chat.party.in', {'contents': text});
   }
   </script>
 </body>

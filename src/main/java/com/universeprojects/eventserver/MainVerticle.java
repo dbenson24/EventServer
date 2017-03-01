@@ -41,6 +41,8 @@ import io.vertx.ext.web.sstore.LocalSessionStore;
 
 public class MainVerticle extends AbstractVerticle {
 	HttpClient client;
+	SharedData sd;
+	EventBus eb;
 	/**
 	 * 
 	 */
@@ -63,46 +65,42 @@ public class MainVerticle extends AbstractVerticle {
 			routingContext.response().sendFile("index.html");
 		});
 		
-		SharedData sd = vertx.sharedData();
-		EventBus eb = vertx.eventBus();
-		
-		eb.consumer("chat.public.in", message -> {
-			System.out.println("I have received a message: " + message.body());
-			String uid = message.headers().get("userId");
-			JsonObject body = (JsonObject) message.body();
-			formatChatMsg(body.getString("content"), "public", uid, resp -> {
-				if (resp.succeeded()) {
-					JsonObject fmtMsg = resp.result();
-					JsonObject out = new JsonObject().put("content", fmtMsg.getString("formattedMsg"));
-					eb.publish("chat.public.out", out);
-				}
+		sd = vertx.sharedData();
+		eb = vertx.eventBus();
+		String[] chats = {
+				"public",
+				"group",
+				"party",
+				"location",
+				"private",
+				"notifications"
+		};
+		BridgeOptions bridgeopts = new BridgeOptions();
+		for (String chat : chats) {
+			eb.consumer("chat."+chat+".in", message -> {
+				System.out.println("I have received a message: " + message.body());
+				String uid = message.headers().get("userId");
+				JsonObject body = (JsonObject) message.body();
+				body.put("channel", chat);
+				body.put("accountId", uid);
+				formatChatMsg(body, resp -> {
+					if (resp.succeeded()) {
+						JsonObject fmtMsg = resp.result();
+						JsonObject out = new JsonObject().put("content", fmtMsg.getString("formattedMsg"));
+						if (fmtMsg.containsKey("id")) {
+							out.put("id", fmtMsg.getString("id"));
+						}
+						eb.publish("chat."+chat+".out", out);
+					}
+				});
 			});
-		});
-		eb.consumer("chat.location.in", message -> {
-			System.out.println("I have received a message: " + message.body());
-			String uid = message.headers().get("userId");
-			JsonObject body = (JsonObject) message.body();
-			formatChatMsg(body.getString("content"), "location", uid, resp -> {
-				if (resp.succeeded()) {
-					JsonObject fmtMsg = resp.result();
-					JsonObject out = new JsonObject().put("content", fmtMsg.getString("formattedMsg")).
-													  put("id", fmtMsg.getString("id"));
-					eb.publish("chat.location.out", out);
-				}
-			});
-		});
+			PermittedOptions inboundPermitted = new PermittedOptions().setAddress("chat."+chat+".in");
+			PermittedOptions outboundPermitted = new PermittedOptions().setAddress("chat."+chat+".out");
+			bridgeopts.addInboundPermitted(inboundPermitted);
+			bridgeopts.addOutboundPermitted(outboundPermitted);
+		}
 		
 		SockJSHandler ebusSockJSHandler = SockJSHandler.create(vertx);
-
-		PermittedOptions inboundPermitted1 = new PermittedOptions().setAddress("chat.public.in");
-		PermittedOptions inboundPermitted2 = new PermittedOptions().setAddress("chat.location.in");
-		PermittedOptions outboundPermitted1 = new PermittedOptions().setAddress("chat.public.out");
-		PermittedOptions outboundPermitted2 = new PermittedOptions().setAddress("chat.location.out");
-		BridgeOptions bridgeopts = new BridgeOptions().
-				addInboundPermitted(inboundPermitted1).
-				addInboundPermitted(inboundPermitted2).
-				addOutboundPermitted(outboundPermitted1).
-				addOutboundPermitted(outboundPermitted2);
 		ebusSockJSHandler.bridge(bridgeopts, be -> {
 			JsonObject msg = be.getRawMessage();
 			if (msg != null) {
@@ -114,11 +112,13 @@ public class MainVerticle extends AbstractVerticle {
 				System.out.println("Handling EventBus Socket Message Send");
 				String userId = getSocketUserId(be);
 				if (userId != null) {
+					// Associate the send message with the Socket's user
 					JsonObject headers = new JsonObject().put("userId", userId);
 					msg.put("headers", headers);
 					be.setRawMessage(msg);
 					be.complete(true);
 				} else {
+					// Deny the send if no user is associated with the Socket
 					be.complete(false);
 				}
 			}	break;
@@ -126,7 +126,6 @@ public class MainVerticle extends AbstractVerticle {
 			case PUBLISH:
 				System.out.println("Handling EventBus Socket Message Publish");
 				// Prevent websocket clients from publishing
-				
 				be.complete(false);
 				break;
 			// Message goes out from Server to Client
@@ -134,22 +133,8 @@ public class MainVerticle extends AbstractVerticle {
 				System.out.println("Handling EventBus Socket Message Recieve");
 				String userId = getSocketUserId(be);
 				if (userId != null) {
-					JsonObject body = msg.getJsonObject("body");
 					System.out.println("userid: " + userId);
-					switch(msg.getString("address")) {
-					case "chat.location.out":
-						if (body.getString("id").equals(sd.getLocalMap("locations").get(userId))) {
-							be.complete(true);
-						} else {
-							be.complete(false);
-						};
-						break;
-					case "chat.public.out":
-						be.complete(true);
-						break;
-					default:
-						be.complete(false);
-					}
+					be.complete(filterChat(msg, userId));
 				} else {
 					System.out.println("Recieving User is null");
 					be.complete(false);
@@ -163,11 +148,14 @@ public class MainVerticle extends AbstractVerticle {
 					System.out.println("Socket is already authenticated!");
 					be.complete(true);
 				} else {
+					// Uses the Headers sent with the register request for authentication
+					// Specifically it looks for Auth-Token
 					authenticate(be.getRawMessage().getJsonObject("headers"), res -> {
 						if (res.succeeded()) {
 							JsonObject user = res.result();
 							System.out.println("AuthUser: " + user.encode());
 							logger.info("AuthUser: " + user.encode());
+							// Caches the userId for this socket so it doesn't hit the server for subsequent registers
 							sd.getLocalMap("sockets").put(be.socket().writeHandlerID(), user.getString("accountId"));
 							be.complete(true);
 						} else {
@@ -185,6 +173,7 @@ public class MainVerticle extends AbstractVerticle {
 				break;
 			case SOCKET_CLOSED: {
 				System.out.println("Handling EventBus Socket Message Socket_Closed");
+				// Cleanup the userId associated with the socket
 				String userId = getSocketUserId(be);
 				if (userId != null) {
 					sd.getLocalMap("sockets").remove(userId);
@@ -248,7 +237,7 @@ public class MainVerticle extends AbstractVerticle {
 		
 	}
 	
-	private void formatChatMsg(String msg, String channel, String userId, Handler<AsyncResult<JsonObject>> resultHandler) {
+	private void formatChatMsg(JsonObject reqbody, Handler<AsyncResult<JsonObject>> resultHandler) {
 		HttpClientRequest request = client.post("/Event-Servlet-Initium/eventserver?type=message", response -> {
 			response.bodyHandler(respBody -> {
 				try {
@@ -264,10 +253,6 @@ public class MainVerticle extends AbstractVerticle {
 			});
 		});
 		// TODO: handle http errors
-		JsonObject reqbody = new JsonObject();
-		reqbody.put("channel", channel);
-		reqbody.put("contents", msg);
-		reqbody.put("accountId", userId);
 		request.exceptionHandler(err -> {
 			System.out.println("Recieved exception: " + err.getMessage());
 			resultHandler.handle(Future.failedFuture("Message Format Request failed"));
@@ -277,6 +262,43 @@ public class MainVerticle extends AbstractVerticle {
 		request.putHeader("content-length", Integer.toString(raw.length()));
 		request.write(raw);
 		request.end();
+	}
+	
+	private boolean filterChat(JsonObject msg, String userId) {
+		JsonObject body = msg.getJsonObject("body");
+		switch(msg.getString("address")) {
+		case "chat.location.out":
+			if (body.getString("id").equals(sd.getLocalMap("locations").get(userId))) {
+				return true;
+			} else {
+				return false;
+			}
+		case "chat.group.out":
+			if (body.getString("id").equals(sd.getLocalMap("groups").get(userId))) {
+				return true;
+			} else {
+				return false;
+			}
+		case "chat.party.out":
+			if (body.getString("id").equals(sd.getLocalMap("parties").get(userId))) {
+				return true;
+			} else {
+				return false;
+			}
+		case "chat.private.out": {
+			String[] players = body.getString("id").split("/");
+			if (players.length != 2) {
+				return false;
+			}
+			if (players[0].equals(userId) || players[1].equals(userId)) {
+				return true;
+			}
+		}
+		case "chat.public.out":
+			return true;
+		default:
+			return false;
+		}
 	}
 	
 	private String getSocketUserId(BridgeEvent be) {

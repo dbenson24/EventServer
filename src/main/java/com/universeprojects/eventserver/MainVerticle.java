@@ -54,7 +54,7 @@ public class MainVerticle extends AbstractVerticle {
 	public void start() {
 		Logger logger = LoggerFactory.getLogger("MainVerticle");
 
-		HttpClientOptions options = new HttpClientOptions().setDefaultHost("localhost").setDefaultPort(8080);
+		HttpClientOptions options = new HttpClientOptions().setDefaultHost("https://test-dot-playinitium.appspot.com");
 		client = vertx.createHttpClient(options);
 		HttpServer server = vertx.createHttpServer();
 		Router router = Router.router(vertx);
@@ -195,12 +195,12 @@ public class MainVerticle extends AbstractVerticle {
 		//router.route("/eventbus/*").handler(basicAuthHandler);
 		router.route("/eventbus/*").handler(ebusSockJSHandler);
 
-		server.requestHandler(router::accept).listen(6969);
+		server.requestHandler(router::accept).listen(6969, "0.0.0.0");
 	}
 	
 	private void authenticate(JsonObject authInfo, Handler<AsyncResult<JsonObject>> resultHandler) {
 		if (authInfo.containsKey("Auth-Token")) {
-			HttpClientRequest request = client.post("/Event-Servlet-Initium/eventserver?type=auth", response -> {
+			HttpClientRequest request = client.post("/eventserver?type=auth", response -> {
 				response.bodyHandler(respBody -> {
 					try {
 					JsonObject body = respBody.toJsonObject();
@@ -238,7 +238,7 @@ public class MainVerticle extends AbstractVerticle {
 	}
 	
 	private void formatChatMsg(JsonObject reqbody, Handler<AsyncResult<JsonObject>> resultHandler) {
-		HttpClientRequest request = client.post("/Event-Servlet-Initium/eventserver?type=message", response -> {
+		HttpClientRequest request = client.post("/eventserver?type=message", response -> {
 			response.bodyHandler(respBody -> {
 				try {
 				JsonObject body = respBody.toJsonObject();

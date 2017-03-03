@@ -9,6 +9,7 @@
  */
 package com.universeprojects.eventserver;
 
+import io.netty.util.internal.logging.InternalLoggerFactory;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
@@ -55,10 +56,9 @@ public class MainVerticle extends AbstractVerticle {
 	@Override
 	public void start() {
 		logger = LoggerFactory.getLogger("MainVerticle");
-
+		
 		HttpClientOptions options = new HttpClientOptions().
-				setDefaultHost("test-dot-playinitium.appspot.com").
-				setSsl(true).setTrustAll(true).setLogActivity(true);
+				setDefaultHost("test-dot-playinitium.appspot.com").setDefaultPort(443).setSsl(true);
 		client = vertx.createHttpClient(options);
 		HttpServer server = vertx.createHttpServer();
 		Router router = Router.router(vertx);

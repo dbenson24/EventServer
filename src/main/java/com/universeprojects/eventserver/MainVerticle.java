@@ -18,6 +18,7 @@ import io.vertx.core.eventbus.*;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpClientRequest;
+import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
@@ -43,6 +44,7 @@ public class MainVerticle extends AbstractVerticle {
 	HttpClient client;
 	SharedData sd;
 	EventBus eb;
+	Logger logger;
 	/**
 	 * 
 	 */
@@ -52,9 +54,11 @@ public class MainVerticle extends AbstractVerticle {
 
 	@Override
 	public void start() {
-		Logger logger = LoggerFactory.getLogger("MainVerticle");
+		logger = LoggerFactory.getLogger("MainVerticle");
 
-		HttpClientOptions options = new HttpClientOptions().setDefaultHost("https://test-dot-playinitium.appspot.com");
+		HttpClientOptions options = new HttpClientOptions().
+				setDefaultHost("test-dot-playinitium.appspot.com").
+				setSsl(true).setTrustAll(true).setLogActivity(true);
 		client = vertx.createHttpClient(options);
 		HttpServer server = vertx.createHttpServer();
 		Router router = Router.router(vertx);
@@ -216,6 +220,7 @@ public class MainVerticle extends AbstractVerticle {
 					}
 					} catch (Exception e) {
 						e.printStackTrace();
+						resultHandler.handle(Future.failedFuture("Invalid response from server: " + respBody.toString()));
 					}
 				});
 			});

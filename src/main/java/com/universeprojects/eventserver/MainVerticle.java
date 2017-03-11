@@ -81,20 +81,27 @@ public class MainVerticle extends AbstractVerticle {
 		};
 		BridgeOptions bridgeopts = new BridgeOptions();
 		for (String chat : chats) {
+			// handle clients sending in messages
 			eb.consumer("chat."+chat+".in", message -> {
 				System.out.println("I have received a message: " + message.body());
 				String uid = message.headers().get("userId");
 				JsonObject body = (JsonObject) message.body();
 				body.put("channel", chat);
 				body.put("accountId", uid);
+				// body is a json object that represents 
+				// what the clients send through the websocket
+				// in addition to a channel field and the accountId
 				formatChatMsg(body, resp -> {
 					if (resp.succeeded()) {
-						JsonObject fmtMsg = resp.result();
-						JsonObject out = new JsonObject().put("content", fmtMsg.getString("formattedMsg"));
-						if (fmtMsg.containsKey("id")) {
-							out.put("id", fmtMsg.getString("id"));
+						// get JSON payload returned from app engine service
+						JsonObject jsonResp = resp.result();
+						DeliveryOptions opts = new DeliveryOptions();
+						if (jsonResp.containsKey("id")) {
+							opts.addHeader("id", jsonResp.getString("id"));
 						}
-						eb.publish("chat."+chat+".out", out);
+						if (jsonResp.containsKey("payload")) {
+							eb.publish("chat."+chat+".out", jsonResp.getJsonObject("payload"), opts);
+						}
 					}
 				});
 			});
@@ -138,7 +145,7 @@ public class MainVerticle extends AbstractVerticle {
 				String userId = getSocketUserId(be);
 				if (userId != null) {
 					System.out.println("userid: " + userId);
-					be.complete(filterChat(msg, userId));
+					be.complete(filterChat(be, userId));
 				} else {
 					System.out.println("Recieving User is null");
 					be.complete(false);
@@ -269,29 +276,35 @@ public class MainVerticle extends AbstractVerticle {
 		request.end();
 	}
 	
-	private boolean filterChat(JsonObject msg, String userId) {
+	// returns true if the message should be sent, returns false if the message should not be sent
+	private boolean filterChat(BridgeEvent be, String userId) {
+		JsonObject msg = be.getRawMessage();
 		JsonObject body = msg.getJsonObject("body");
+		JsonObject headers = msg.getJsonObject("headers");
+		// clear headers
+		msg.put("headers", new JsonObject());
+		be.setRawMessage(msg);
 		switch(msg.getString("address")) {
 		case "chat.location.out":
-			if (body.getString("id").equals(sd.getLocalMap("locations").get(userId))) {
+			if (headers.getString("id").equals(sd.getLocalMap("locations").get(userId))) {
 				return true;
 			} else {
 				return false;
 			}
 		case "chat.group.out":
-			if (body.getString("id").equals(sd.getLocalMap("groups").get(userId))) {
+			if (headers.getString("id").equals(sd.getLocalMap("groups").get(userId))) {
 				return true;
 			} else {
 				return false;
 			}
 		case "chat.party.out":
-			if (body.getString("id").equals(sd.getLocalMap("parties").get(userId))) {
+			if (headers.getString("id").equals(sd.getLocalMap("parties").get(userId))) {
 				return true;
 			} else {
 				return false;
 			}
 		case "chat.private.out": {
-			String[] players = body.getString("id").split("/");
+			String[] players = headers.getString("id").split("/");
 			if (players.length != 2) {
 				return false;
 			}

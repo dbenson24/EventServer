@@ -120,6 +120,7 @@ public class MainVerticle extends AbstractVerticle {
 		
 		eb.consumer("chat.sendSaved", message -> {
 			JsonObject body = (JsonObject)message.body();
+			logger.info(body.encode());
 			String socketId = body.getString("socketId");
 			String address = body.getString("address");
 			String userId = body.getString("userId");

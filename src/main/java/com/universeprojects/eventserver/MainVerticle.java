@@ -220,8 +220,6 @@ public class MainVerticle extends AbstractVerticle {
 							// Caches the userId for this socket so it doesn't hit the server for subsequent registers
 							sd.getLocalMap("sockets").put(be.socket().writeHandlerID(), user.getString("accountId"));
 							logger.info(be.socket().writeHandlerID());
-							JsonObject test = new JsonObject().put("contents", "hey!");
-							sendSocketMessage("chat.public.out", be.socket().writeHandlerID(), test);
 							be.complete(true);
 							eb.send("chat.sendSaved", savedMessagesBody);
 						} else {

@@ -9,11 +9,16 @@
  */
 package com.universeprojects.eventserver;
 
+
+import java.util.ArrayList;
+import java.util.List;
+
 import io.netty.util.internal.logging.InternalLoggerFactory;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
+import io.vertx.core.buffer.Buffer;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.*;
 import io.vertx.core.http.HttpClient;
@@ -21,6 +26,7 @@ import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpServer;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
@@ -101,6 +107,7 @@ public class MainVerticle extends AbstractVerticle {
 						}
 						if (jsonResp.containsKey("payload")) {
 							eb.publish("chat."+chat+".out", jsonResp.getJsonObject("payload"), opts);
+							saveMessage(chat, jsonResp);
 						}
 					}
 				});
@@ -110,6 +117,40 @@ public class MainVerticle extends AbstractVerticle {
 			bridgeopts.addInboundPermitted(inboundPermitted);
 			bridgeopts.addOutboundPermitted(outboundPermitted);
 		}
+		
+		eb.consumer("chat.sendSaved", message -> {
+			JsonObject body = (JsonObject)message.body();
+			String socketId = body.getString("socketId");
+			String address = body.getString("address");
+			String userId = body.getString("userId");
+			Long time = body.getLong("date");
+			JsonArray msgsJson = new JsonArray();
+			JsonArray msgs = null;
+			switch(address) {
+			case "chat.private.out":
+				break;
+			case "chat.public.out":
+				msgs = sd.<String,JsonArray>getLocalMap("messages").get("publicChat");
+				break;
+			case "chat.group.out":
+				msgs = sd.<String,JsonArray>getLocalMap("messages").get(sd.<String, String>getLocalMap("groups").get(userId));
+				break;
+			case "chat.location.out":
+				msgs = sd.<String,JsonArray>getLocalMap("messages").get(sd.<String, String>getLocalMap("locations").get(userId));
+				break;
+			case "chat.party.out":
+				msgs = sd.<String,JsonArray>getLocalMap("messages").get(sd.<String, String>getLocalMap("parties").get(userId));
+				break;
+			}
+			if(msgs != null) {
+				msgs.forEach(msg -> {
+					if (((JsonObject) msg).getLong("createdDate") > time) {
+						msgsJson.add(msg);
+					}
+				});
+			}
+			sendSocketMessage(address, socketId, msgsJson);
+		});
 		
 		SockJSHandler ebusSockJSHandler = SockJSHandler.create(vertx);
 		ebusSockJSHandler.bridge(bridgeopts, be -> {
@@ -155,9 +196,19 @@ public class MainVerticle extends AbstractVerticle {
 			case REGISTER: {
 				System.out.println("Handling EventBus Socket Message Register");
 				String userId = getSocketUserId(be);
+				JsonObject savedMessagesBody = new JsonObject();
+				savedMessagesBody.put("address", msg.getString("address"));
+				savedMessagesBody.put("userId", userId);
+				savedMessagesBody.put("socketId", be.socket().writeHandlerID());
+				if (msg.getJsonObject("headers").containsKey("Last-Recieved")) {
+					savedMessagesBody.put("date", msg.getJsonObject("headers").getLong("Last-Recieved"));
+				} else {
+					savedMessagesBody.put("date", 0);
+				}
 				if (userId != null) {
 					System.out.println("Socket is already authenticated!");
 					be.complete(true);
+					eb.send("chat.sendSaved", savedMessagesBody);
 				} else {
 					// Uses the Headers sent with the register request for authentication
 					// Specifically it looks for Auth-Token
@@ -168,7 +219,11 @@ public class MainVerticle extends AbstractVerticle {
 							logger.info("AuthUser: " + user.encode());
 							// Caches the userId for this socket so it doesn't hit the server for subsequent registers
 							sd.getLocalMap("sockets").put(be.socket().writeHandlerID(), user.getString("accountId"));
+							logger.info(be.socket().writeHandlerID());
+							JsonObject test = new JsonObject().put("contents", "hey!");
+							sendSocketMessage("chat.public.out", be.socket().writeHandlerID(), test);
 							be.complete(true);
+							eb.send("chat.sendSaved", savedMessagesBody);
 						} else {
 							logger.info("Unable to authenticate " + res.cause());
 							res.cause().printStackTrace();
@@ -322,5 +377,56 @@ public class MainVerticle extends AbstractVerticle {
 	private String getSocketUserId(BridgeEvent be) {
 		SharedData sd = vertx.sharedData();
 		return sd.<String,String>getLocalMap("sockets").get(be.socket().writeHandlerID());
+	}
+	
+	private void sendSocketMessage(String address, String handlerId, JsonObject body) {
+		JsonObject message = new JsonObject().put("type", "rec");
+		message.put("address", address);
+		message.put("body", body);
+		Buffer buff = Buffer.buffer();
+		buff.appendString(message.encode());
+		eb.publish(handlerId, buff);
+	}
+	private void sendSocketMessage(String address, String handlerId, JsonArray body) {
+		JsonObject message = new JsonObject().put("type", "rec");
+		message.put("address", address);
+		message.put("body", body);
+		Buffer buff = Buffer.buffer();
+		buff.appendString(message.encode());
+		eb.publish(handlerId, buff);
+	}
+	private void saveMessage(String channel, JsonObject serverResp) {
+		JsonObject payload = serverResp.getJsonObject("payload");
+		String id;
+		JsonArray msgs;
+		switch(channel) {
+			case "public":
+				id = "publicChat";
+				msgs = sd.<String, JsonArray>getLocalMap("messages").get(id);
+				if (msgs == null) {
+					msgs = new JsonArray();
+				}
+				msgs.add(payload);
+				if (msgs.size() > 200) {
+					msgs.remove(0);
+				}
+				sd.getLocalMap("messages").put(id, msgs);
+				break;
+			case "private":
+				
+				break;
+			default:
+				id = serverResp.getString("id");
+				logger.info("Getting " + channel+ " messages for ID: " + id);
+				msgs = sd.<String, JsonArray>getLocalMap("messages").get(id);
+				if (msgs == null) {
+					msgs = new JsonArray();
+				}
+				msgs.add(payload);
+				if (msgs.size() > 200) {
+					msgs.remove(0);
+				}
+				sd.getLocalMap("messages").put(id, msgs);
+		}
 	}
 }

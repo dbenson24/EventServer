@@ -432,6 +432,9 @@ public class MainVerticle extends AbstractVerticle {
 				}
 				sd.getLocalMap("messages").put(sender, msgs);
 				// Save message to receiver
+				if (sender.equals(receiver)) {
+					return;
+				}
 				msgs = sd.<String, JsonArray>getLocalMap("messages").get(receiver);
 				if (msgs == null) {
 					msgs = new JsonArray();

@@ -414,9 +414,14 @@ public class MainVerticle extends AbstractVerticle {
 				break;
 			case "private":
 				id = serverResp.getString("id");
-				String sender, reciever;
+				if (id == null) {
+					id = "null";
+				}
+				System.out.println("Saving Private Chat Message with id" + id);
+				String sender, receiver;
 				sender = id.split("/")[1] + "#private";
-				reciever = id.split("/")[0] + "#private";
+				receiver = id.split("/")[0] + "#private";
+				// Save message to sender
 				msgs = sd.<String, JsonArray>getLocalMap("messages").get(sender);
 				if (msgs == null) {
 					msgs = new JsonArray();
@@ -426,7 +431,8 @@ public class MainVerticle extends AbstractVerticle {
 					msgs.remove(0);
 				}
 				sd.getLocalMap("messages").put(sender, msgs);
-				msgs = sd.<String, JsonArray>getLocalMap("messages").get(reciever);
+				// Save message to receiver
+				msgs = sd.<String, JsonArray>getLocalMap("messages").get(receiver);
 				if (msgs == null) {
 					msgs = new JsonArray();
 				}
@@ -434,7 +440,7 @@ public class MainVerticle extends AbstractVerticle {
 				if (msgs.size() > 200) {
 					msgs.remove(0);
 				}
-				sd.getLocalMap("messages").put(reciever, msgs);
+				sd.getLocalMap("messages").put(receiver, msgs);
 				break;
 			default:
 				id = serverResp.getString("id");

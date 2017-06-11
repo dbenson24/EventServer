@@ -365,6 +365,8 @@ public class MainVerticle extends AbstractVerticle {
 			}
 			if (players[0].equals(userId) || players[1].equals(userId)) {
 				return true;
+			} else {
+				return false;
 			}
 		}
 		case "chat.public.out":
